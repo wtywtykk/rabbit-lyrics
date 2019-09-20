@@ -36,6 +36,8 @@ export default class RabbitLyrics {
    * @param {string} options.viewMode Modes of lyrics view box, available values: default, mini, full
    * @param {string} options.alignment Lyrics text alighment, available values: left, center, right
    * @param {number} options.height Height of lyrics. Only works with default view mode
+   * @param {boolean} options.noScroll Auto scroll disable
+   * @param {number} options.lyricDelay Delay of lyrics in ms. Can be negative to advance the lyric
    */
   constructor(options) {
     this.element = options.element;
@@ -67,6 +69,18 @@ export default class RabbitLyrics {
       this.element.style.textAlign = options.alignment;
     }
 
+    if (options.noScroll) {
+      this.element.classList.remove("rabbit-lyrics--scroll");
+    } else {
+      this.element.classList.add("rabbit-lyrics--scroll");
+    }
+
+    if (options.lyricDelay) {
+      this.element.dataset.delay=options.lyricDelay;
+    } else {
+      this.element.dataset.delay=0;
+    }
+
     this.scrollerIntervalDuration = 200;
     this.scrollerIntervalStep = 10;
     this.lineElements = [];
@@ -75,11 +89,12 @@ export default class RabbitLyrics {
     this.setStatus = this.setStatus.bind(this);
     this.synchronize = this.synchronize.bind(this);
     this.scroll = this.scroll.bind(this);
+    this.detachLyrics=this.detachLyrics.bind(this);
 
     this.parseLyrics();
     this.enableLyrics();
   }
-
+  
   /**
    * Find first audio or video element before lyrics element. Only used when
    * no mediaElement was specified. If nothing was found, return null.
@@ -125,8 +140,15 @@ export default class RabbitLyrics {
     }
 
     let lines = this.element.textContent.trim().split("\n");
+    
+    let backupElement = document.createElement("p");
+    backupElement.className = "rabbit-lyrics__backup";
+    backupElement.setAttribute("hidden",true);
+    backupElement.addEventListener('click', this.detachLyrics);
+    backupElement.innerHTML = this.element.innerHTML;
 
     this.element.textContent = "";
+    this.element.appendChild(backupElement);
 
     let lastTime = 0; // Remember last time stamp. If next lines doesn't
     // have beginning time stamp, use this value
@@ -216,6 +238,32 @@ export default class RabbitLyrics {
 
     return this;
   }
+  
+  /**
+   * Detach and restore the lyric text
+   */
+  detachLyrics() {
+    // Unind playback update events
+    this.mediaElement.removeEventListener('timeupdate', this.synchronize);
+
+    this.mediaElement.removeEventListener('play', this.setStatus);
+    this.mediaElement.removeEventListener('playing',  this.setStatus);
+    this.mediaElement.removeEventListener('pause',  this.setStatus);
+    this.mediaElement.removeEventListener('waiting',  this.setStatus);
+    this.mediaElement.removeEventListener('ended',  this.setStatus);
+    
+    // Remove classes.
+    this.element.classList.remove("rabbit-lyrics--default", "rabbit-lyrics--mini", "rabbit-lyrics--full");
+    this.element.classList.remove("rabbit-lyrics--playing", "rabbit-lyrics--paused", "rabbit-lyrics--waiting", "rabbit-lyrics--ended");
+    this.element.classList.remove("rabbit-lyrics--scroll");
+    this.element.classList.remove("rabbit-lyrics--enabled");
+    this.element.classList.remove("rabbit-lyrics");
+    
+    // Restore lyric box.
+    this.element.innerHTML=this.element.getElementsByTagName("p")[0].innerHTML;
+    
+    this.element.detachLyrics=null;
+  }
 
   /**
    *
@@ -248,7 +296,7 @@ export default class RabbitLyrics {
    * Synchronize media element time and lyrics lines
    */
   synchronize() {
-    let time = this.mediaElement.currentTime;
+    let time = this.mediaElement.currentTime - this.element.dataset.delay;
     let changed = false; // If here are active lines changed
     let activeLineElements = [];
 
@@ -271,7 +319,7 @@ export default class RabbitLyrics {
       }
     });
 
-    if (changed && activeLineElements.length > 0) {
+    if (this.element.classList.contains("rabbit-lyrics--scroll") && changed && activeLineElements.length > 0) {
       // Calculate scroll top. Vertically align active lines in middle
       let activeLinesOffsetTop =
         (activeLineElements[0].offsetTop +
@@ -335,6 +383,33 @@ export default class RabbitLyrics {
     }
 
     return 0;
+  }
+}
+
+// Enable or disable auto scroll
+export function setAutoScroll(element,scroll){
+  if (scroll) {
+    element.classList.add("rabbit-lyrics--scroll");
+  } else {
+    element.classList.remove("rabbit-lyrics--scroll");
+  }
+}
+
+// Set delay time (in seconds)
+export function setDelay(element,delay){
+  element.dataset.delay=delay;
+}
+
+// Detach rabbit lyric
+export function detachRabbitLyric(element){
+  if(element!=undefined) {
+    let interactiveElement=element.getElementsByTagName("p")[0];
+      if(interactiveElement!=undefined) {
+        interactiveElement.click();
+      } else {
+        element.classList.remove("rabbit-lyrics--enabled");
+        // Just to ensure. Sometimes the internal element is deleted by mistake.
+      }
   }
 }
 
